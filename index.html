@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Calculadora Maligna</title>
+<style>
+    body {
+        margin: 0;
+        height: 100vh;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        background: linear-gradient(135deg, #111, #300);
+        font-family: Comic Sans MS, cursive;
+        overflow: hidden;
+    }
+
+    .calculator {
+        width: 360px;
+        background: #1a1a1a;
+        border: 7px dashed red;
+        border-radius: 30px;
+        padding: 20px;
+        box-shadow: 0 0 40px crimson;
+        transform: rotate(-1deg);
+    }
+
+    .screen {
+        width: 100%;
+        height: 80px;
+        background: black;
+        color: lime;
+        font-size: 30px;
+        text-align: right;
+        padding: 10px;
+        box-sizing: border-box;
+        margin-bottom: 20px;
+        border: 4px inset gray;
+        overflow: hidden;
+        word-wrap: break-word;
+        transform: scaleX(-1);
+    }
+
+    .buttons {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+    }
+
+    button {
+        border: none;
+        border-radius: 15px;
+        cursor: pointer;
+        font-size: 24px;
+        font-weight: bold;
+        transition: all 0.15s ease;
+        background: linear-gradient(45deg, #ff4444, #ffcc00);
+        color: black;
+        user-select: none;
+    }
+
+    button:hover {
+        transform: rotate(calc(-10deg + 20deg * var(--r))) scale(1.2);
+        filter: hue-rotate(90deg);
+    }
+
+    .evil-message {
+        position: fixed;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        background: crimson;
+        color: white;
+        padding: 10px 20px;
+        border-radius: 20px;
+        font-size: 18px;
+        display: none;
+        z-index: 999;
+        box-shadow: 0 0 20px red;
+    }
+</style>
+</head>
+<body>
+
+<div class="evil-message" id="evilMessage"></div>
+
+<div class="calculator">
+    <div class="screen" id="screen">0</div>
+    <div class="buttons" id="buttons"></div>
+</div>
+
+<script>
+const screen = document.getElementById('screen');
+const buttonsContainer = document.getElementById('buttons');
+const evilMessage = document.getElementById('evilMessage');
+
+let expression = '';
+
+const labels = [
+    '7','8','9','/',
+    '4','5','6','*',
+    '1','2','3','-',
+    '0','.','=','+',
+    'C','⌫'
+];
+
+function shuffle(array) {
+    for (let i = array.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [array[i], array[j]] = [array[j], array[i]];
+    }
+}
+
+function renderButtons() {
+    buttonsContainer.innerHTML = '';
+
+    const shuffled = [...labels];
+    shuffle(shuffled);
+
+    shuffled.forEach(label => {
+        const btn = document.createElement('button');
+        btn.innerText = label;
+
+        // tamaños aleatorios
+        const h = 50 + Math.random() * 60;
+        const fs = 16 + Math.random() * 22;
+
+        btn.style.height = h + 'px';
+        btn.style.fontSize = fs + 'px';
+        btn.style.setProperty('--r', Math.random());
+
+        btn.addEventListener('click', () => handleButton(label));
+
+        buttonsContainer.appendChild(btn);
+    });
+}
+
+function showMessage(text) {
+    evilMessage.innerText = text;
+    evilMessage.style.display = 'block';
+
+    setTimeout(() => {
+        evilMessage.style.display = 'none';
+    }, 1500);
+}
+
+function updateScreen(isResult = false) {
+    screen.innerText = expression || '0';
+
+    // rojo cuando muestra resultado, verde mientras se escribe
+    screen.style.color = isResult ? 'red' : 'lime';
+}
+
+function randomDigit() {
+    return Math.floor(Math.random() * 10).toString();
+}
+
+function confirmAction(text) {
+    return confirm(text + '\n\n¿Estás MUY seguro?');
+}
+
+function handleButton(label) {
+
+    // los botones se vuelven a mezclar constantemente
+    if (Math.random() > 0.4) {
+        renderButtons();
+    }
+
+    if (!confirmAction('Vas a presionar "' + label + '"')) {
+        showMessage('Operación cancelada por paranoia');
+        return;
+    }
+
+    if (label === 'C') {
+        expression = '';
+        updateScreen();
+        return;
+    }
+
+    if (label === '⌫') {
+        // MALDAD: backspace agrega números
+        expression += randomDigit();
+        showMessage('Ups... agregué un número');
+        updateScreen();
+        return;
+    }
+
+    if (label === '=') {
+        const delay = 500 + Math.random() * 4000;
+
+        showMessage('Calculando... quizá');
+
+        setTimeout(() => {
+            try {
+                expression = eval(expression).toString();
+                updateScreen(true);
+                showMessage('Resultado probablemente correcto');
+            } catch {
+                expression = 'ERROR';
+                updateScreen(true);
+            }
+        }, delay);
+
+        return;
+    }
+
+    expression += label;
+    updateScreen();
+}
+
+renderButtons();
+
+// caos constante: los botones cambian tamaño, rotación y color solos
+setInterval(() => {
+    document.querySelectorAll('button').forEach(btn => {
+        btn.style.height = (50 + Math.random() * 60) + 'px';
+        btn.style.fontSize = (16 + Math.random() * 22) + 'px';
+        btn.style.transform = `rotate(${Math.random()*20-10}deg)`;
+
+        // los botones numéricos cambian de color constantemente
+        if (!isNaN(btn.innerText)) {
+            btn.style.color = `rgb(
+                ${Math.floor(Math.random() * 256)},
+                ${Math.floor(Math.random() * 256)},
+                ${Math.floor(Math.random() * 256)}
+            )`;
+        }
+    });
+}, 1200);
+
+// ocasionalmente cambia el contenido de la pantalla por confusión
+setInterval(() => {
+    if (Math.random() > 0.8 && expression.length > 0) {
+        screen.innerText = expression.split('').reverse().join('');
+    } else {
+        updateScreen();
+    }
+}, 1500);
+</script>
+
+</body>
+</html>

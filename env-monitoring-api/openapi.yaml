@@ -8,10 +8,17 @@ servers:
   - url: https://api.example.com/v1
     description: Production server
 
+tags:
+  - name: Devices
+    description: Operations for managing IoT devices.
+  - name: Measurements
+    description: Operations for managing environmental measurements reported by devices.
+
 paths:
   /devices:
     get:
       summary: List devices
+      description: Retrieves all registered IoT devices.
       operationId: listDevices
       tags:
         - Devices
@@ -27,6 +34,7 @@ paths:
 
     post:
       summary: Create device
+      description: Creates a new IoT device with its name and location.
       operationId: createDevice
       tags:
         - Devices
@@ -46,9 +54,75 @@ paths:
         '400':
           $ref: '#/components/responses/BadRequest'
 
-  /devices/{id}/measurements:
+  /devices/{deviceId}:
+    get:
+      summary: Get device by ID
+      description: Retrieves a single IoT device by its identifier.
+      operationId: getDevice
+      tags:
+        - Devices
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Device found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete device
+      description: Deletes a specific IoT device by its identifier.
+      operationId: deleteDevice
+      tags:
+        - Devices
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '204':
+          description: Device deleted successfully
+          content: {}
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/status:
+    get:
+      summary: Get device status
+      description: Retrieves the current status of a specific IoT device.
+      operationId: getDeviceStatus
+      tags:
+        - Devices
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: Device status found
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - deviceId
+                  - status
+                properties:
+                  deviceId:
+                    type: integer
+                  status:
+                    type: string
+                    enum:
+                      - online
+                      - offline
+                      - maintenance
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{deviceId}/measurements:
     get:
       summary: List measurements for a device
+      description: Retrieves all environmental measurements reported by a specific device.
       operationId: listDeviceMeasurements
       tags:
         - Measurements
@@ -68,6 +142,7 @@ paths:
 
     post:
       summary: Create measurement for a device
+      description: Creates a new temperature and humidity measurement for a specific device.
       operationId: createDeviceMeasurement
       tags:
         - Measurements
@@ -91,9 +166,10 @@ paths:
         '404':
           $ref: '#/components/responses/NotFound'
 
-  /devices/{id}/measurements/{measurementId}:
+  /devices/{deviceId}/measurements/{measurementId}:
     delete:
       summary: Delete a measurement from a device
+      description: Deletes a specific measurement associated with a specific device.
       operationId: deleteDeviceMeasurement
       tags:
         - Measurements
@@ -103,19 +179,19 @@ paths:
       responses:
         '204':
           description: Measurement deleted successfully
+          content: {}
         '404':
           $ref: '#/components/responses/NotFound'
 
 components:
   parameters:
     DeviceId:
-      name: id
+      name: deviceId
       in: path
       required: true
       description: Device identifier
       schema:
-        type: string
-        format: uuid
+        type: integer
 
     MeasurementId:
       name: measurementId
@@ -123,8 +199,7 @@ components:
       required: true
       description: Measurement identifier
       schema:
-        type: string
-        format: uuid
+        type: integer
 
   responses:
     BadRequest:
@@ -149,13 +224,14 @@ components:
         - id
         - name
         - location
+        - created_at
+        - status
       properties:
         id:
-          type: string
-          format: uuid
+          type: integer
           description: Unique device identifier
           examples:
-            - 550e8400-e29b-41d4-a716-446655440000
+            - 1
         name:
           type: string
           minLength: 1
@@ -168,6 +244,21 @@ components:
           description: Physical location of the device
           examples:
             - Laboratory Room 1
+        created_at:
+          type: string
+          format: date-time
+          description: Device creation timestamp
+          examples:
+            - '2026-05-19T15:30:00Z'
+        status:
+          type: string
+          description: Current device status
+          enum:
+            - online
+            - offline
+            - maintenance
+          examples:
+            - online
 
     CreateDeviceRequest:
       type: object
@@ -198,11 +289,10 @@ components:
         - device_id
       properties:
         id:
-          type: string
-          format: uuid
+          type: integer
           description: Unique measurement identifier
           examples:
-            - 7a1f8b44-14d9-4fd0-a912-b1df1d8e7f91
+            - 2
         temperature:
           type: number
           format: float
@@ -224,11 +314,10 @@ components:
           examples:
             - '2026-05-19T15:30:00Z'
         device_id:
-          type: string
-          format: uuid
+          type: integer
           description: Identifier of the device that produced the measurement
           examples:
-            - 550e8400-e29b-41d4-a716-446655440000
+            - 1
 
     CreateMeasurementRequest:
       type: object
@@ -263,9 +352,15 @@ components:
       type: object
       additionalProperties: false
       required:
+        - status
         - error
         - message
       properties:
+        status:
+          type: integer
+          description: HTTP status code
+          examples:
+            - 400
         error:
           type: string
           description: Machine-readable error code

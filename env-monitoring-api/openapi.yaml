@@ -1,0 +1,278 @@
+openapi: 3.1.0
+info:
+  title: Environmental IoT Monitoring API
+  version: 1.0.0
+  description: REST API contract for managing IoT devices and their environmental measurements.
+
+servers:
+  - url: https://api.example.com/v1
+    description: Production server
+
+paths:
+  /devices:
+    get:
+      summary: List devices
+      operationId: listDevices
+      tags:
+        - Devices
+      responses:
+        '200':
+          description: List of devices
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Device'
+
+    post:
+      summary: Create device
+      operationId: createDevice
+      tags:
+        - Devices
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDeviceRequest'
+      responses:
+        '201':
+          description: Device created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Device'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /devices/{id}/measurements:
+    get:
+      summary: List measurements for a device
+      operationId: listDeviceMeasurements
+      tags:
+        - Measurements
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      responses:
+        '200':
+          description: List of measurements for the device
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Measurement'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    post:
+      summary: Create measurement for a device
+      operationId: createDeviceMeasurement
+      tags:
+        - Measurements
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMeasurementRequest'
+      responses:
+        '201':
+          description: Measurement created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Measurement'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /devices/{id}/measurements/{measurementId}:
+    delete:
+      summary: Delete a measurement from a device
+      operationId: deleteDeviceMeasurement
+      tags:
+        - Measurements
+      parameters:
+        - $ref: '#/components/parameters/DeviceId'
+        - $ref: '#/components/parameters/MeasurementId'
+      responses:
+        '204':
+          description: Measurement deleted successfully
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    DeviceId:
+      name: id
+      in: path
+      required: true
+      description: Device identifier
+      schema:
+        type: string
+        format: uuid
+
+    MeasurementId:
+      name: measurementId
+      in: path
+      required: true
+      description: Measurement identifier
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Invalid request payload or parameters
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    Device:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - location
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique device identifier
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440000
+        name:
+          type: string
+          minLength: 1
+          description: Human-readable device name
+          examples:
+            - Room 1 Sensor
+        location:
+          type: string
+          minLength: 1
+          description: Physical location of the device
+          examples:
+            - Laboratory Room 1
+
+    CreateDeviceRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - name
+        - location
+      properties:
+        name:
+          type: string
+          minLength: 1
+          examples:
+            - Room 1 Sensor
+        location:
+          type: string
+          minLength: 1
+          examples:
+            - Laboratory Room 1
+
+    Measurement:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - temperature
+        - humidity
+        - timestamp
+        - device_id
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique measurement identifier
+          examples:
+            - 7a1f8b44-14d9-4fd0-a912-b1df1d8e7f91
+        temperature:
+          type: number
+          format: float
+          description: Temperature value in Celsius
+          examples:
+            - 23.5
+        humidity:
+          type: number
+          format: float
+          description: Relative humidity percentage
+          minimum: 0
+          maximum: 100
+          examples:
+            - 58.2
+        timestamp:
+          type: string
+          format: date-time
+          description: Measurement timestamp in ISO 8601 format
+          examples:
+            - '2026-05-19T15:30:00Z'
+        device_id:
+          type: string
+          format: uuid
+          description: Identifier of the device that produced the measurement
+          examples:
+            - 550e8400-e29b-41d4-a716-446655440000
+
+    CreateMeasurementRequest:
+      type: object
+      additionalProperties: false
+      required:
+        - temperature
+        - humidity
+        - timestamp
+      properties:
+        temperature:
+          type: number
+          format: float
+          description: Temperature value in Celsius
+          examples:
+            - 23.5
+        humidity:
+          type: number
+          format: float
+          description: Relative humidity percentage
+          minimum: 0
+          maximum: 100
+          examples:
+            - 58.2
+        timestamp:
+          type: string
+          format: date-time
+          description: Measurement timestamp in ISO 8601 format
+          examples:
+            - '2026-05-19T15:30:00Z'
+
+    ErrorResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code
+          examples:
+            - bad_request
+        message:
+          type: string
+          description: Human-readable error message
+          examples:
+            - Invalid request payload

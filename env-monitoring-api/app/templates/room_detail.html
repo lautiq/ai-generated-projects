@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2>{{ room.name }}</h2>
+        <p class="text-muted mb-0">{{ room.location }}</p>
+    </div>
+    <a href="/" class="btn btn-outline-secondary btn-sm">← Dashboard</a>
+</div>
+
+{% set color = "success" if status == "green" else "warning" if status == "yellow" else "danger" if status == "red" else "secondary" %}
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card text-center border-{{ color }}">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Estado</h6>
+                <span class="badge bg-{{ color }} fs-6 px-3 py-2">{{ status }}</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Temperatura</h6>
+                <p class="fs-2 mb-0">{{ "%.1f"|format(latest.temperature) if latest else "--" }} <small>°C</small></p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card text-center">
+            <div class="card-body">
+                <h6 class="card-subtitle mb-2 text-muted">Humedad</h6>
+                <p class="fs-2 mb-0">{{ "%.1f"|format(latest.humidity) if latest else "--" }} <small>%</small></p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <h5 class="card-title">Historial últimas 24 horas</h5>
+        {% if timestamps %}
+        <canvas id="historyChart" height="80"></canvas>
+        {% else %}
+        <p class="text-muted">Sin datos en las últimas 24 horas.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{% if timestamps %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+new Chart(document.getElementById("historyChart"), {
+    type: "line",
+    data: {
+        labels: {{ timestamps | tojson }},
+        datasets: [
+            {
+                label: "Temperatura (°C)",
+                data: {{ temperatures | tojson }},
+                borderColor: "rgb(220, 53, 69)",
+                backgroundColor: "rgba(220, 53, 69, 0.1)",
+                tension: 0.3,
+                fill: true
+            },
+            {
+                label: "Humedad (%)",
+                data: {{ humidities | tojson }},
+                borderColor: "rgb(13, 110, 253)",
+                backgroundColor: "rgba(13, 110, 253, 0.1)",
+                tension: 0.3,
+                fill: true,
+                yAxisID: "y2"
+            }
+        ]
+    },
+    options: {
+        responsive: true,
+        interaction: { mode: "index", intersect: false },
+        scales: {
+            y: { title: { display: true, text: "°C" } },
+            y2: { position: "right", title: { display: true, text: "%" }, grid: { drawOnChartArea: false } }
+        }
+    }
+});
+</script>
+{% endif %}
+{% endblock %}

@@ -5,6 +5,7 @@ from app.config import settings
 from app.routes.html import auth as html_auth
 from app.routes.html import dashboard as html_dashboard
 from app.routes.html import rooms as html_rooms
+from app.routes.html import config as html_config
 from app.routes.api import devices as api_devices
 from app.routes.api import measurements as api_measurements
 from app.routes.api import rooms as api_rooms
@@ -15,6 +16,7 @@ app.mount("/static", StaticFiles(directory="app/static"), name="static")
 app.include_router(html_auth.router)
 app.include_router(html_dashboard.router)
 app.include_router(html_rooms.router)
+app.include_router(html_config.router)
 app.include_router(api_devices.router)
 app.include_router(api_measurements.router)
 app.include_router(api_rooms.router)

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="mb-4">Configuración de límites</h2>
+{% if message %}
+<div class="alert alert-success alert-dismissible fade show" role="alert">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
+{% if not devices %}
+<div class="alert alert-info">No hay dispositivos registrados.</div>
+{% else %}
+<div class="row g-4">
+{% for item in devices %}
+<div class="col-md-6">
+    <div class="card">
+        <div class="card-header">
+            <strong>{{ item.device.name }}</strong>
+            <span class="text-muted ms-2">— {{ item.room.name }}</span>
+        </div>
+        <div class="card-body">
+            <form method="post" action="/config/{{ item.device.id }}">
+                <div class="row g-2">
+                    <div class="col-6">
+                        <label class="form-label">Temp. mín (°C)</label>
+                        <input type="number" step="0.1" name="temp_min" class="form-control"
+                               value="{{ item.threshold.temp_min if item.threshold else '' }}" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Temp. máx (°C)</label>
+                        <input type="number" step="0.1" name="temp_max" class="form-control"
+                               value="{{ item.threshold.temp_max if item.threshold else '' }}" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Humedad mín (%)</label>
+                        <input type="number" step="0.1" name="humidity_min" class="form-control"
+                               value="{{ item.threshold.humidity_min if item.threshold else '' }}" required>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Humedad máx (%)</label>
+                        <input type="number" step="0.1" name="humidity_max" class="form-control"
+                               value="{{ item.threshold.humidity_max if item.threshold else '' }}" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary btn-sm mt-3">Guardar</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,7 +1,10 @@
 import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import StaticPool
 from fastapi.testclient import TestClient
+import tempfile
+import os
 
 from app.db import Base, get_db
 from app.main import app
@@ -9,13 +12,16 @@ from app.config import settings
 # Import all models to register them with Base
 from app.models import room, device, measurement, threshold, user
 
-SQLITE_URL = "sqlite:///:memory:"
+# Use a temporary file for the test database to avoid threading issues
+_TEST_DB_FILE = tempfile.NamedTemporaryFile(delete=False, suffix=".db")
+_TEST_DB_FILE.close()
+SQLITE_URL = f"sqlite:///{_TEST_DB_FILE.name}"
 
 @pytest.fixture
 def db():
     engine = create_engine(SQLITE_URL, connect_args={"check_same_thread": False})
     Base.metadata.create_all(engine)
-    TestingSession = sessionmaker(bind=engine)
+    TestingSession = sessionmaker(bind=engine, expire_on_commit=False)
     session = TestingSession()
     yield session
     session.close()

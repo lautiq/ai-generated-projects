@@ -1,4 +1,3 @@
-from fastapi import Request
 from sqlalchemy.orm import Session
 from app.models.user import User
 from app.services.user_service import get_by_username, verify_password
@@ -13,11 +12,11 @@ def authenticate_user(db: Session, username: str, password: str):
     return user
 
 
-def login(request: Request, user: User):
-    request.session["user_id"] = user.id
-    request.session["username"] = user.username
-    request.session["role"] = user.role.value
+def login(session: dict, user: User):
+    session["user_id"] = user.id
+    session["username"] = user.username
+    session["role"] = user.role.value
 
 
-def logout(request: Request):
-    request.session.clear()
+def logout(session: dict):
+    session.clear()

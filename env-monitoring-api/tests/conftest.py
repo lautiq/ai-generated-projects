@@ -6,6 +6,8 @@ from fastapi.testclient import TestClient
 from app.db import Base, get_db
 from app.main import app
 from app.config import settings
+# Import all models to register them with Base
+from app.models import room, device, measurement, threshold, user
 
 SQLITE_URL = "sqlite:///:memory:"
 

@@ -18,12 +18,13 @@ def get_device(db: Session, device_id: int):
     return db.query(Device).filter(Device.id == device_id).first()
 
 
-def set_status(db: Session, device_id: int, status: DeviceStatus):
+def set_status(db: Session, device_id: int, status: DeviceStatus) -> Device:
     device = get_device(db, device_id)
-    if device:
-        device.status = status
-        db.commit()
-        db.refresh(device)
+    if not device:
+        raise ValueError(f"Device {device_id} not found")
+    device.status = status
+    db.commit()
+    db.refresh(device)
     return device
 
 

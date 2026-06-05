@@ -5,6 +5,7 @@ def test_create_room(db):
     room = create_room(db, name="Lab A", location="Building 1, Floor 2")
     assert room.id is not None
     assert room.name == "Lab A"
+    assert room.location == "Building 1, Floor 2"
 
 
 def test_list_rooms(db):

@@ -18,6 +18,10 @@ def get_device(db: Session, device_id: int):
     return db.query(Device).filter(Device.id == device_id).first()
 
 
+def get_by_room(db: Session, room_id: int):
+    return db.query(Device).filter(Device.room_id == room_id).first()
+
+
 def set_status(db: Session, device_id: int, status: DeviceStatus) -> Device:
     device = get_device(db, device_id)
     if not device:

@@ -1,8 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.dependencies import get_db, require_user
-from app.models.device import Device
-from app.services import room_service, measurement_service, threshold_service, alert_service
+from app.services import room_service, measurement_service, threshold_service, alert_service, device_service
 
 router = APIRouter(prefix="/api/rooms", tags=["api-rooms"])
 
@@ -13,7 +12,7 @@ def get_room_status(room_id: int, db: Session = Depends(get_db), _=Depends(requi
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    device = db.query(Device).filter(Device.room_id == room_id).first()
+    device = device_service.get_by_room(db, room_id)
     if not device:
         return {"room_id": room_id, "status": "unknown", "temperature": None, "humidity": None, "timestamp": None}
 

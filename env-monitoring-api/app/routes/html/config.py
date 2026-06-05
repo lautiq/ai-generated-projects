@@ -53,6 +53,7 @@ def save_config(
             humidity_min=humidity_min, humidity_max=humidity_max,
         )
     except ValueError as e:
+        db.rollback()
         return templates.TemplateResponse("config.html", {
             "request": request,
             "devices": _build_items(db),

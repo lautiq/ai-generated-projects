@@ -80,7 +80,11 @@
 - [ ] **Step 1: Create requirements.txt**
 
 ```
-fastapi[all]==0.115.6
+fastapi==0.115.6
+uvicorn==0.32.1
+jinja2==3.1.4
+python-multipart==0.0.17
+itsdangerous==2.2.0
 sqlalchemy==2.0.36
 psycopg2-binary==2.9.10
 alembic==1.14.0
@@ -447,13 +451,21 @@ class MeasurementResponse(BaseModel):
 - [ ] **Step 4: Create app/schemas/threshold.py**
 
 ```python
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, model_validator
 
 class ThresholdUpsert(BaseModel):
     temp_min: float
     temp_max: float
-    humidity_min: float
-    humidity_max: float
+    humidity_min: float = Field(ge=0, le=100)
+    humidity_max: float = Field(ge=0, le=100)
+
+    @model_validator(mode="after")
+    def check_ranges(self):
+        if self.temp_min >= self.temp_max:
+            raise ValueError("temp_min must be less than temp_max")
+        if self.humidity_min >= self.humidity_max:
+            raise ValueError("humidity_min must be less than humidity_max")
+        return self
 
 class ThresholdResponse(BaseModel):
     id: int
@@ -1125,6 +1137,10 @@ def test_create_device(authed_client, db):
     assert data["room_id"] == room.id
     assert data["status"] == "offline"
 
+def test_create_device_room_not_found(authed_client, db):
+    resp = authed_client.post("/api/devices", json={"room_id": 9999, "name": "Ghost Node"})
+    assert resp.status_code == 404
+
 def test_list_devices_after_create(authed_client, db):
     room = create_room(db, name="R", location="L")
     authed_client.post("/api/devices", json={"room_id": room.id, "name": "N1"})
@@ -1144,11 +1160,11 @@ Expected: errors since router doesn't exist yet.
 - [ ] **Step 3: Create app/routes/api/devices.py**
 
 ```python
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.dependencies import get_db, require_user, require_admin
 from app.schemas.device import DeviceCreate, DeviceResponse
-from app.services import device_service
+from app.services import device_service, room_service
 
 router = APIRouter(prefix="/api/devices", tags=["api-devices"])
 
@@ -1158,6 +1174,8 @@ def list_devices(db: Session = Depends(get_db), _=Depends(require_user)):
 
 @router.post("", response_model=DeviceResponse, status_code=201)
 def create_device(body: DeviceCreate, db: Session = Depends(get_db), _=Depends(require_admin)):
+    if not room_service.get_room(db, body.room_id):
+        raise HTTPException(status_code=404, detail="Room not found")
     return device_service.create_device(db, room_id=body.room_id, name=body.name)
 ```
 
@@ -1309,6 +1327,8 @@ git commit -m "feat: MeasurementService with tests"
 ---
 
 ## Task 11: API Routes — Measurements (Sensor Ingestion)
+
+> **Auth MVP note:** All sensors share a single `SENSOR_TOKEN` defined in `.env`. This is sufficient for MVP. A future improvement would be a `sensor_tokens` table with one token per device, allowing revocation per device without affecting others.
 
 **Files:**
 - Create: `app/routes/api/measurements.py`
@@ -1473,6 +1493,29 @@ def test_upsert_updates(db):
     assert updated.temp_min == 20.0
     # Still only one threshold record
     assert get_by_device(db, device.id).temp_max == 28.0
+
+def test_upsert_device_not_found(db):
+    import pytest
+    with pytest.raises(ValueError, match="Device"):
+        upsert(db, device_id=9999, temp_min=18.0, temp_max=26.0, humidity_min=40.0, humidity_max=70.0)
+
+def test_upsert_invalid_temp_range(db):
+    import pytest
+    device = _make_device(db)
+    with pytest.raises(ValueError, match="temp_min"):
+        upsert(db, device_id=device.id, temp_min=30.0, temp_max=20.0, humidity_min=40.0, humidity_max=70.0)
+
+def test_upsert_invalid_humidity_range(db):
+    import pytest
+    device = _make_device(db)
+    with pytest.raises(ValueError, match="humidity_min"):
+        upsert(db, device_id=device.id, temp_min=18.0, temp_max=26.0, humidity_min=80.0, humidity_max=50.0)
+
+def test_upsert_humidity_out_of_bounds(db):
+    import pytest
+    device = _make_device(db)
+    with pytest.raises(ValueError, match="humidity"):
+        upsert(db, device_id=device.id, temp_min=18.0, temp_max=26.0, humidity_min=-5.0, humidity_max=70.0)
 ```
 
 - [ ] **Step 2: Run tests — verify they fail**
@@ -1493,6 +1536,16 @@ def get_by_device(db: Session, device_id: int):
     return db.query(Threshold).filter(Threshold.device_id == device_id).first()
 
 def upsert(db: Session, device_id: int, temp_min: float, temp_max: float, humidity_min: float, humidity_max: float) -> Threshold:
+    from app.models.device import Device
+    if not db.query(Device).filter(Device.id == device_id).first():
+        raise ValueError(f"Device {device_id} does not exist")
+    if temp_min >= temp_max:
+        raise ValueError("temp_min must be less than temp_max")
+    if not (0 <= humidity_min <= 100) or not (0 <= humidity_max <= 100):
+        raise ValueError("humidity values must be between 0 and 100")
+    if humidity_min >= humidity_max:
+        raise ValueError("humidity_min must be less than humidity_max")
+
     threshold = get_by_device(db, device_id)
     if threshold:
         threshold.temp_min = temp_min
@@ -2108,6 +2161,9 @@ git commit -m "feat: room detail page with Chart.js 24h graph"
     <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
 </div>
 {% endif %}
+{% if error %}
+<div class="alert alert-danger">{{ error }}</div>
+{% endif %}
 {% if not devices %}
 <div class="alert alert-info">No hay dispositivos registrados.</div>
 {% else %}
@@ -2201,11 +2257,23 @@ def save_config(
     if not request.session.get("user_id"):
         return RedirectResponse("/login", status_code=303)
 
-    threshold_service.upsert(
-        db, device_id=device_id,
-        temp_min=temp_min, temp_max=temp_max,
-        humidity_min=humidity_min, humidity_max=humidity_max,
-    )
+    try:
+        threshold_service.upsert(
+            db, device_id=device_id,
+            temp_min=temp_min, temp_max=temp_max,
+            humidity_min=humidity_min, humidity_max=humidity_max,
+        )
+    except ValueError as e:
+        devices = db.query(Device).all()
+        items = [{"device": d, "room": db.query(Room).filter(Room.id == d.room_id).first(),
+                  "threshold": threshold_service.get_by_device(db, d.id)} for d in devices]
+        return templates.TemplateResponse("config.html", {
+            "request": request, "devices": items, "message": None,
+            "error": str(e),
+            "username": request.session.get("username"),
+            "role": request.session.get("role"),
+        }, status_code=422)
+
     return RedirectResponse("/config?saved=1", status_code=303)
 ```
 
@@ -2429,6 +2497,340 @@ Expected: all tests pass.
 ```bash
 git add app/templates/users.html app/routes/html/users.py app/main.py
 git commit -m "feat: users admin page — list, create, delete"
+```
+
+---
+
+## Task 19: Room Management
+
+**Files:**
+- Modify: `app/routes/api/rooms.py`
+- Create: `app/routes/html/rooms_mgmt.py`
+- Create: `app/templates/rooms.html`
+- Modify: `app/main.py`
+- Modify: `tests/test_api/test_rooms_api.py`
+
+- [ ] **Step 1: Add GET /api/rooms and POST /api/rooms tests**
+
+Add to `tests/test_api/test_rooms_api.py`:
+
+```python
+def test_list_rooms_requires_auth(client):
+    resp = client.get("/api/rooms")
+    assert resp.status_code == 401
+
+def test_list_rooms_empty(authed_client):
+    resp = authed_client.get("/api/rooms")
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+def test_create_room_requires_admin(client, db):
+    create_user(db, username="regular2", password="pass", role=UserRole.user)
+    client.post("/login", data={"username": "regular2", "password": "pass"}, follow_redirects=False)
+    resp = client.post("/api/rooms", json={"name": "Lab", "location": "Floor 1"})
+    assert resp.status_code == 403
+
+def test_create_room(authed_client):
+    resp = authed_client.post("/api/rooms", json={"name": "Cold Room", "location": "Basement"})
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["name"] == "Cold Room"
+    assert data["id"] is not None
+
+def test_list_rooms_after_create(authed_client):
+    authed_client.post("/api/rooms", json={"name": "R1", "location": "L1"})
+    authed_client.post("/api/rooms", json={"name": "R2", "location": "L2"})
+    resp = authed_client.get("/api/rooms")
+    assert len(resp.json()) == 2
+```
+
+- [ ] **Step 2: Run tests — verify they fail**
+
+```bash
+pytest tests/test_api/test_rooms_api.py -v
+```
+
+Expected: failures on the new tests.
+
+- [ ] **Step 3: Add routes to app/routes/api/rooms.py**
+
+Replace the full file content:
+
+```python
+from fastapi import APIRouter, Depends, HTTPException
+from sqlalchemy.orm import Session
+from app.dependencies import get_db, require_user, require_admin
+from app.models.device import Device
+from app.schemas.room import RoomCreate, RoomResponse
+from app.services import room_service, measurement_service, threshold_service, alert_service
+
+router = APIRouter(prefix="/api/rooms", tags=["api-rooms"])
+
+@router.get("", response_model=list[RoomResponse])
+def list_rooms(db: Session = Depends(get_db), _=Depends(require_user)):
+    return room_service.list_rooms(db)
+
+@router.post("", response_model=RoomResponse, status_code=201)
+def create_room(body: RoomCreate, db: Session = Depends(get_db), _=Depends(require_admin)):
+    return room_service.create_room(db, name=body.name, location=body.location)
+
+@router.get("/{room_id}/status")
+def get_room_status(room_id: int, db: Session = Depends(get_db), _=Depends(require_user)):
+    room = room_service.get_room(db, room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+
+    device = db.query(Device).filter(Device.room_id == room_id).first()
+    if not device:
+        return {"room_id": room_id, "status": "unknown", "temperature": None, "humidity": None, "timestamp": None}
+
+    latest = measurement_service.get_latest(db, device.id)
+    threshold = threshold_service.get_by_device(db, device.id)
+    status = alert_service.compute_status(latest, threshold)
+
+    return {
+        "room_id": room_id,
+        "device_id": device.id,
+        "status": status,
+        "temperature": latest.temperature if latest else None,
+        "humidity": latest.humidity if latest else None,
+        "timestamp": latest.timestamp.isoformat() if latest else None,
+    }
+```
+
+- [ ] **Step 4: Run tests — verify they pass**
+
+```bash
+pytest tests/test_api/test_rooms_api.py -v
+```
+
+Expected: all pass.
+
+- [ ] **Step 5: Create app/templates/rooms.html**
+
+```html
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Habitaciones</h2>
+    <a href="/" class="btn btn-outline-secondary btn-sm">← Dashboard</a>
+</div>
+
+{% if message %}
+<div class="alert alert-success alert-dismissible fade show">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="row g-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">Habitaciones registradas</div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr><th>Nombre</th><th>Ubicación</th><th>Creada</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                    {% for room in rooms %}
+                    <tr>
+                        <td>{{ room.name }}</td>
+                        <td class="text-muted">{{ room.location }}</td>
+                        <td class="text-muted small">{{ room.created_at.strftime("%Y-%m-%d") }}</td>
+                        <td><a href="/rooms/{{ room.id }}" class="btn btn-outline-primary btn-sm">Ver</a></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-muted text-center py-3">Sin habitaciones registradas.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% if role == "admin" %}
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Nueva habitación</div>
+            <div class="card-body">
+                <form method="post" action="/rooms">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre</label>
+                        <input type="text" name="name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ubicación</label>
+                        <input type="text" name="location" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Crear habitación</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+```
+
+- [ ] **Step 6: Create app/routes/html/rooms_mgmt.py**
+
+```python
+from fastapi import APIRouter, Depends, Request, Form
+from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
+from app.dependencies import get_db
+from app.services import room_service
+
+router = APIRouter(tags=["html"])
+templates = Jinja2Templates(directory="app/templates")
+
+@router.get("/rooms", response_class=HTMLResponse)
+def rooms_list(request: Request, db: Session = Depends(get_db)):
+    if not request.session.get("user_id"):
+        return RedirectResponse("/login", status_code=303)
+    return templates.TemplateResponse("rooms.html", {
+        "request": request,
+        "rooms": room_service.list_rooms(db),
+        "message": "Habitación creada." if request.query_params.get("created") else None,
+        "username": request.session.get("username"),
+        "role": request.session.get("role"),
+    })
+
+@router.post("/rooms")
+def create_room(
+    request: Request,
+    name: str = Form(...),
+    location: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    if not request.session.get("user_id"):
+        return RedirectResponse("/login", status_code=303)
+    if request.session.get("role") != "admin":
+        return RedirectResponse("/rooms", status_code=303)
+    room_service.create_room(db, name=name, location=location)
+    return RedirectResponse("/rooms?created=1", status_code=303)
+```
+
+- [ ] **Step 7: Register router and add Rooms link to navbar in app/main.py and base.html**
+
+Add to `app/main.py`:
+
+```python
+from app.routes.html import rooms_mgmt as html_rooms_mgmt
+app.include_router(html_rooms_mgmt.router)
+```
+
+Add to `app/templates/base.html` navbar (after the existing `href="/config"` link):
+
+```html
+<a class="nav-link" href="/rooms">Habitaciones</a>
+```
+
+- [ ] **Step 8: Verify in browser**
+
+Navigate to `http://localhost:8000/rooms`. Create a room as admin, verify it appears in the list and the dashboard.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add app/routes/api/rooms.py app/routes/html/rooms_mgmt.py app/templates/rooms.html app/main.py app/templates/base.html tests/test_api/test_rooms_api.py
+git commit -m "feat: room management API and HTML routes"
+```
+
+---
+
+## Task 20: Seed Demo
+
+**Files:**
+- Create: `seed_demo.py`
+
+This script populates the database with realistic demo data: admin user, 4 rooms, 4 devices, thresholds, and 48h of simulated measurements (one every 15 minutes). Run once after `alembic upgrade head`.
+
+- [ ] **Step 1: Create seed_demo.py**
+
+```python
+"""
+Demo seed: run once after `alembic upgrade head`.
+Creates admin, 4 rooms+devices, thresholds and 48h of sample measurements.
+"""
+import random
+from datetime import datetime, timedelta, timezone
+from app.db import SessionLocal
+from app.services.user_service import create_user, get_by_username
+from app.services.room_service import create_room
+from app.services.device_service import create_device
+from app.services.threshold_service import upsert as upsert_threshold
+from app.services.measurement_service import create_measurement
+from app.models.user import UserRole
+
+ROOMS = [
+    ("Laboratorio A",    "Edificio 1, Piso 2",  18.0, 26.0, 40.0, 70.0),
+    ("Cámara Fría",      "Edificio 1, Sótano",   2.0,  8.0, 50.0, 80.0),
+    ("Sala de Servidores","Edificio 2, Piso 1",  16.0, 24.0, 35.0, 60.0),
+    ("Cuarto de Control","Edificio 2, Piso 3",   20.0, 28.0, 40.0, 65.0),
+]
+
+def _simulate_measurements(db, device_id, temp_center, hum_center, hours=48):
+    now = datetime.now(timezone.utc)
+    for i in range(hours * 4):  # one per 15 min
+        ts = now - timedelta(minutes=15 * (hours * 4 - i))
+        temp = round(temp_center + random.uniform(-2.5, 2.5), 2)
+        hum = round(hum_center + random.uniform(-5.0, 5.0), 2)
+        hum = max(0.0, min(100.0, hum))
+        create_measurement(db, device_id=device_id, temperature=temp, humidity=hum, timestamp=ts)
+
+def main():
+    db = SessionLocal()
+    try:
+        if not get_by_username(db, "admin"):
+            create_user(db, username="admin", password="admin123", role=UserRole.admin)
+            print("Created admin user (admin / admin123)")
+
+        for room_name, location, t_min, t_max, h_min, h_max in ROOMS:
+            room = create_room(db, name=room_name, location=location)
+            device = create_device(db, room_id=room.id, name=f"Nodo {room_name}")
+            upsert_threshold(db, device_id=device.id,
+                             temp_min=t_min, temp_max=t_max,
+                             humidity_min=h_min, humidity_max=h_max)
+            temp_center = (t_min + t_max) / 2
+            hum_center = (h_min + h_max) / 2
+            _simulate_measurements(db, device.id, temp_center, hum_center)
+            print(f"Seeded: {room_name}")
+
+        print("Done. Run: uvicorn app.main:app --reload")
+    finally:
+        db.close()
+
+if __name__ == "__main__":
+    main()
+```
+
+- [ ] **Step 2: Run the seed**
+
+```bash
+python seed_demo.py
+```
+
+Expected output:
+```
+Created admin user (admin / admin123)
+Seeded: Laboratorio A
+Seeded: Cámara Fría
+Seeded: Sala de Servidores
+Seeded: Cuarto de Control
+Done. Run: uvicorn app.main:app --reload
+```
+
+- [ ] **Step 3: Verify in browser**
+
+Start the server and log in. The dashboard should show 4 rooms with colored status cards. Navigate to a room detail page and verify the 24h chart renders with data points.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add seed_demo.py
+git commit -m "feat: demo seed script with 4 rooms and 48h of sample measurements"
 ```
 
 ---

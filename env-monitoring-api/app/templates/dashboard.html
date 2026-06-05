@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block content %}
+<h2 class="mb-4">Dashboard</h2>
+{% if not rooms %}
+<div class="alert alert-info">No hay habitaciones registradas.</div>
+{% else %}
+<div class="row row-cols-1 row-cols-md-3 g-4">
+{% for item in rooms %}
+{% set color = "success" if item.status == "green" else "warning" if item.status == "yellow" else "danger" if item.status == "red" else "secondary" %}
+<div class="col">
+    <div class="card h-100 border-{{ color }}">
+        <div class="card-header bg-{{ color }} text-white d-flex justify-content-between align-items-center">
+            <span>{{ item.room.name }}</span>
+            <span class="badge bg-white text-{{ color }}">{{ item.status }}</span>
+        </div>
+        <div class="card-body">
+            <p class="text-muted mb-1">{{ item.room.location }}</p>
+            {% if item.latest %}
+            <p class="mb-1"><strong>Temp:</strong> {{ "%.1f"|format(item.latest.temperature) }} °C</p>
+            <p class="mb-0"><strong>Humedad:</strong> {{ "%.1f"|format(item.latest.humidity) }} %</p>
+            {% else %}
+            <p class="text-muted">Sin mediciones recientes</p>
+            {% endif %}
+        </div>
+        <div class="card-footer bg-transparent">
+            <a href="/rooms/{{ item.room.id }}" class="btn btn-sm btn-outline-primary">Ver detalle</a>
+        </div>
+    </div>
+</div>
+{% endfor %}
+</div>
+{% endif %}
+{% endblock %}

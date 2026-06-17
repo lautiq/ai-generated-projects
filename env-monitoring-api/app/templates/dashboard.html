@@ -6,9 +6,9 @@
 {% else %}
 <div class="row row-cols-1 row-cols-md-3 g-4">
 {% for item in rooms %}
-{% set color = "success" if item.status == "green" else "warning" if item.status == "yellow" else "danger" if item.status == "red" else "secondary" %}
+{% set color = "success" if item.status == "ok" else "warning" if item.status == "warning" else "danger" if item.status == "danger" else "secondary" %}
 <div class="col">
-    <div class="card h-100 border-{{ color }}">
+    <div class="card h-100 border-{{ color }}" data-room-id="{{ item.room.id }}" data-color="{{ color }}">
         <div class="card-header bg-{{ color }} text-white d-flex justify-content-between align-items-center">
             <span>{{ item.room.name }}</span>
             <span class="badge bg-white text-{{ color }}">{{ item.status }}</span>
@@ -16,10 +16,10 @@
         <div class="card-body">
             <p class="text-muted mb-1">{{ item.room.location }}</p>
             {% if item.latest %}
-            <p class="mb-1"><strong>Temp:</strong> {{ "%.1f"|format(item.latest.temperature) }} °C</p>
-            <p class="mb-0"><strong>Humedad:</strong> {{ "%.1f"|format(item.latest.humidity) }} %</p>
+            <p class="mb-1"><strong>Temp:</strong> <span class="val-temp">{{ "%.1f"|format(item.latest.temperature) }}</span> °C</p>
+            <p class="mb-0"><strong>Humedad:</strong> <span class="val-hum">{{ "%.1f"|format(item.latest.humidity) }}</span> %</p>
             {% else %}
-            <p class="text-muted">Sin mediciones recientes</p>
+            <p class="text-muted val-no-data">Sin mediciones recientes</p>
             {% endif %}
         </div>
         <div class="card-footer bg-transparent">
@@ -30,4 +30,46 @@
 {% endfor %}
 </div>
 {% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+const STATUS_COLOR = { ok: "success", warning: "warning", danger: "danger", unknown: "secondary" };
+
+function updateCard(card, data) {
+    const newColor = STATUS_COLOR[data.status] ?? "secondary";
+    const oldColor = card.dataset.color;
+
+    if (oldColor !== newColor) {
+        card.classList.replace(`border-${oldColor}`, `border-${newColor}`);
+        const header = card.querySelector(".card-header");
+        header.classList.replace(`bg-${oldColor}`, `bg-${newColor}`);
+        const badge = header.querySelector(".badge");
+        badge.classList.replace(`text-${oldColor}`, `text-${newColor}`);
+        card.dataset.color = newColor;
+    }
+
+    card.querySelector(".card-header .badge").textContent = data.status;
+
+    if (data.temperature !== null) {
+        const tempEl = card.querySelector(".val-temp");
+        const humEl  = card.querySelector(".val-hum");
+        if (tempEl) {
+            tempEl.textContent = data.temperature.toFixed(1);
+            humEl.textContent  = data.humidity.toFixed(1);
+        }
+    }
+}
+
+async function refresh() {
+    for (const card of document.querySelectorAll("[data-room-id]")) {
+        try {
+            const resp = await fetch(`/api/rooms/${card.dataset.roomId}/status`);
+            if (resp.ok) updateCard(card, await resp.json());
+        } catch (_) {}
+    }
+}
+
+setInterval(refresh, 15000);
+</script>
 {% endblock %}

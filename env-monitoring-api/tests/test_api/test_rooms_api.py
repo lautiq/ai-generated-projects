@@ -36,7 +36,7 @@ def test_room_status_green(authed_client, db):
     resp = authed_client.get(f"/api/rooms/{room.id}/status")
     assert resp.status_code == 200
     data = resp.json()
-    assert data["status"] == "green"
+    assert data["status"] == "ok"
     assert data["temperature"] == 25.0
 
 

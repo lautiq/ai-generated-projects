@@ -8,13 +8,13 @@
     <a href="/" class="btn btn-outline-secondary btn-sm">← Dashboard</a>
 </div>
 
-{% set color = "success" if status == "green" else "warning" if status == "yellow" else "danger" if status == "red" else "secondary" %}
+{% set color = "success" if status == "ok" else "warning" if status == "warning" else "danger" if status == "danger" else "secondary" %}
 <div class="row g-3 mb-4">
     <div class="col-md-4">
-        <div class="card text-center border-{{ color }}">
+        <div class="card text-center border-{{ color }}" id="status-card" data-color="{{ color }}">
             <div class="card-body">
                 <h6 class="card-subtitle mb-2 text-muted">Estado</h6>
-                <span class="badge bg-{{ color }} fs-6 px-3 py-2">{{ status }}</span>
+                <span id="val-status" class="badge bg-{{ color }} fs-6 px-3 py-2" data-color="{{ color }}">{{ status }}</span>
             </div>
         </div>
     </div>
@@ -22,7 +22,7 @@
         <div class="card text-center">
             <div class="card-body">
                 <h6 class="card-subtitle mb-2 text-muted">Temperatura</h6>
-                <p class="fs-2 mb-0">{{ "%.1f"|format(latest.temperature) if latest else "--" }} <small>°C</small></p>
+                <p class="fs-2 mb-0"><span id="val-temp">{{ "%.1f"|format(latest.temperature) if latest else "--" }}</span> <small>°C</small></p>
             </div>
         </div>
     </div>
@@ -30,7 +30,7 @@
         <div class="card text-center">
             <div class="card-body">
                 <h6 class="card-subtitle mb-2 text-muted">Humedad</h6>
-                <p class="fs-2 mb-0">{{ "%.1f"|format(latest.humidity) if latest else "--" }} <small>%</small></p>
+                <p class="fs-2 mb-0"><span id="val-hum">{{ "%.1f"|format(latest.humidity) if latest else "--" }}</span> <small>%</small></p>
             </div>
         </div>
     </div>
@@ -52,7 +52,7 @@
 {% if timestamps %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
-new Chart(document.getElementById("historyChart"), {
+const historyChart = new Chart(document.getElementById("historyChart"), {
     type: "line",
     data: {
         labels: {{ timestamps | tojson }},
@@ -78,6 +78,7 @@ new Chart(document.getElementById("historyChart"), {
     },
     options: {
         responsive: true,
+        animation: false,
         interaction: { mode: "index", intersect: false },
         scales: {
             y: { title: { display: true, text: "°C" } },
@@ -87,4 +88,50 @@ new Chart(document.getElementById("historyChart"), {
 });
 </script>
 {% endif %}
+<script>
+const ROOM_ID = {{ room.id }};
+const STATUS_COLOR = { ok: "success", warning: "warning", danger: "danger", unknown: "secondary" };
+
+async function refresh() {
+    try {
+        const resp = await fetch(`/api/rooms/${ROOM_ID}/status`);
+        if (!resp.ok) return;
+        const data = await resp.json();
+
+        // Update status card color + badge
+        const badge     = document.getElementById("val-status");
+        const statusCard = document.getElementById("status-card");
+        const oldColor  = badge.dataset.color;
+        const newColor  = STATUS_COLOR[data.status] ?? "secondary";
+        if (oldColor !== newColor) {
+            badge.classList.replace(`bg-${oldColor}`, `bg-${newColor}`);
+            statusCard.classList.replace(`border-${oldColor}`, `border-${newColor}`);
+            badge.dataset.color = newColor;
+        }
+        badge.textContent = data.status;
+
+        // Update values
+        if (data.temperature !== null) {
+            document.getElementById("val-temp").textContent = data.temperature.toFixed(1);
+            document.getElementById("val-hum").textContent  = data.humidity.toFixed(1);
+        }
+
+        // Append new point to chart
+        if (typeof historyChart !== "undefined" && data.timestamp) {
+            const label = new Date(data.timestamp).toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+            historyChart.data.labels.push(label);
+            historyChart.data.datasets[0].data.push(data.temperature);
+            historyChart.data.datasets[1].data.push(data.humidity);
+            // Keep last 96 points (24h × 4 per hour)
+            if (historyChart.data.labels.length > 96) {
+                historyChart.data.labels.shift();
+                historyChart.data.datasets.forEach(ds => ds.data.shift());
+            }
+            historyChart.update("none");
+        }
+    } catch (_) {}
+}
+
+setInterval(refresh, 15000);
+</script>
 {% endblock %}

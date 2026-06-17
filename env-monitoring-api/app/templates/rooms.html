@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Habitaciones</h2>
+    <a href="/" class="btn btn-outline-secondary btn-sm">← Dashboard</a>
+</div>
+
+{% if message %}
+<div class="alert alert-success alert-dismissible fade show">
+    {{ message }}
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="row g-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">Habitaciones registradas</div>
+            <div class="card-body p-0">
+                <table class="table table-hover mb-0">
+                    <thead class="table-light">
+                        <tr><th>Nombre</th><th>Ubicación</th><th>Creada</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                    {% for room in rooms %}
+                    <tr>
+                        <td>{{ room.name }}</td>
+                        <td class="text-muted">{{ room.location }}</td>
+                        <td class="text-muted small">{{ room.created_at.strftime("%Y-%m-%d") }}</td>
+                        <td><a href="/rooms/{{ room.id }}" class="btn btn-outline-primary btn-sm">Ver</a></td>
+                    </tr>
+                    {% else %}
+                    <tr><td colspan="4" class="text-muted text-center py-3">Sin habitaciones registradas.</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% if role == "admin" %}
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-header">Nueva habitación</div>
+            <div class="card-body">
+                <form method="post" action="/rooms">
+                    <div class="mb-3">
+                        <label class="form-label">Nombre</label>
+                        <input type="text" name="name" class="form-control" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ubicación</label>
+                        <input type="text" name="location" class="form-control" required>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Crear habitación</button>
+                </form>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

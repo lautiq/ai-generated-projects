@@ -10,6 +10,7 @@ from app.routes.api import devices as api_devices
 from app.routes.api import measurements as api_measurements
 from app.routes.api import rooms as api_rooms
 from app.routes.html import users as html_users
+from app.routes.html import rooms_mgmt as html_rooms_mgmt
 
 app = FastAPI(title="EnviroWatch")
 app.add_middleware(SessionMiddleware, secret_key=settings.secret_key)
@@ -19,6 +20,7 @@ app.include_router(html_dashboard.router)
 app.include_router(html_rooms.router)
 app.include_router(html_config.router)
 app.include_router(html_users.router)
+app.include_router(html_rooms_mgmt.router)
 app.include_router(api_devices.router)
 app.include_router(api_measurements.router)
 app.include_router(api_rooms.router)

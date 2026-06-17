@@ -1,10 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
-from app.dependencies import get_db, require_user
-from app.services import room_service, measurement_service, threshold_service, alert_service, device_service
+from app.dependencies import get_db, require_user, require_admin
+from app.models.device import Device
+from app.schemas.room import RoomCreate, RoomResponse
+from app.services import room_service, measurement_service, threshold_service, alert_service
 
 router = APIRouter(prefix="/api/rooms", tags=["api-rooms"])
 
+@router.get("", response_model=list[RoomResponse])
+def list_rooms(db: Session = Depends(get_db), _=Depends(require_user)):
+    return room_service.list_rooms(db)
+
+@router.post("", response_model=RoomResponse, status_code=201)
+def create_room(body: RoomCreate, db: Session = Depends(get_db), _=Depends(require_admin)):
+    return room_service.create_room(db, name=body.name, location=body.location)
 
 @router.get("/{room_id}/status")
 def get_room_status(room_id: int, db: Session = Depends(get_db), _=Depends(require_user)):
@@ -12,7 +21,7 @@ def get_room_status(room_id: int, db: Session = Depends(get_db), _=Depends(requi
     if not room:
         raise HTTPException(status_code=404, detail="Room not found")
 
-    device = device_service.get_by_room(db, room_id)
+    device = db.query(Device).filter(Device.room_id == room_id).first()
     if not device:
         return {"room_id": room_id, "status": "unknown", "temperature": None, "humidity": None, "timestamp": None}
 

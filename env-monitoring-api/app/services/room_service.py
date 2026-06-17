@@ -11,7 +11,7 @@ def create_room(db: Session, name: str, location: str) -> Room:
 
 
 def list_rooms(db: Session):
-    return db.query(Room).all()
+    return db.query(Room).order_by(Room.created_at).all()
 
 
 def get_room(db: Session, room_id: int):

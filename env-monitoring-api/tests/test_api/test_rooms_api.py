@@ -53,7 +53,8 @@ def test_list_rooms_empty(authed_client):
 
 def test_create_room_requires_admin(client, db):
     create_user(db, username="regular2", password="pass", role=UserRole.user)
-    client.post("/login", data={"username": "regular2", "password": "pass"}, follow_redirects=False)
+    login_resp = client.post("/login", data={"username": "regular2", "password": "pass"}, follow_redirects=False)
+    assert login_resp.status_code == 303
     resp = client.post("/api/rooms", json={"name": "Lab", "location": "Floor 1"})
     assert resp.status_code == 403
 

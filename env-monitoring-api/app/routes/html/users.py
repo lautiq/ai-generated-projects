@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, Request, Form
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
-from app.dependencies import get_db
+from app.db import get_db
 from app.models.user import UserRole
 from app.services import user_service
 
@@ -53,7 +53,18 @@ def create_user(
             "error": f"El usuario '{username}' ya existe.",
         }, status_code=400)
 
-    user_service.create_user(db, username=username, password=password, role=UserRole(role))
+    try:
+        user_role = UserRole(role)
+    except ValueError:
+        return templates.TemplateResponse("users.html", {
+            "request": request,
+            "users": user_service.list_users(db),
+            "current_user_id": request.session.get("user_id"),
+            "username": request.session.get("username"),
+            "role": request.session.get("role"),
+            "error": "Rol inválido.",
+        }, status_code=400)
+    user_service.create_user(db, username=username, password=password, role=user_role)
     return RedirectResponse("/users", status_code=303)
 
 @router.post("/users/{user_id}/delete")

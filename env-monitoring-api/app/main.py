@@ -20,3 +20,5 @@ app.include_router(html_config.router)
 app.include_router(api_devices.router)
 app.include_router(api_measurements.router)
 app.include_router(api_rooms.router)
+from app.routes.html import users as html_users
+app.include_router(html_users.router)
